@@ -36,11 +36,18 @@
     function setConnected(connected){
         document.getElementById('sendMessage').disabled = !connected;
     }
+    //連線上後自動執行這個方法
     function connect() {
+        ///chat 就是後端設定的 WebSocket 入口點（Endpoint）==>前端發起連線請求
+        //SockJS('/chat') 會創建一個到 http://localhost:8080/chat 的連線，
+        // 並告訴後端，前端希望進行 WebSocket 通信。
+        //後端會在 /chat 端點接收到這個連線請求，並建立 WebSocket 連接，這樣雙方就能開始傳遞消息了。
         let socket = new SockJS('/chat');
+        //創建一個 STOMP 客戶端
         stompClient = Stomp.over(socket);
         stompClient.connect({}, function (frame) {
             setConnected('true');
+            //subscribe的頻道"/topic/message 可以讀取訊息
             stompClient.subscribe('/topic/messages', function (message) {
                 showMessage(JSON.parse(message.body));
             })
@@ -64,7 +71,10 @@
             stompClient.send("/app/sendMessage", {}, JSON.stringify(chatMessage));
             document.getElementById('messageInput').value = '';
         }
+        //在你點「Send」的時候，這段 JS 被觸發
         document.getElementById('sendMessage').onclick = sendMessage;
+
+        //等整個網頁（DOM + 靜態資源）載入完成之後，再去執行 connect() 函式。
         window.onload= connect;
 
 </script>

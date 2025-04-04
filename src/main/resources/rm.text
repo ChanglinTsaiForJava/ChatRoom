@@ -1,0 +1,115 @@
+[chat.html]
+   |
+   |-- window.onload --> connect()
+   |                        |
+   |                        |-- SockJS('/chat') 建立連線
+   |                        |-- STOMP.over(socket)
+   |                        |-- stompClient.connect() 成功後訂閱:
+   |                             --> stompClient.subscribe('/topic/messages', callback)
+   |
+   |-- 按下 send 按鈕 --> sendMessage()
+                             |
+                             |-- stompClient.send("/app/sendMessage", {}, JSON)
+                             |
+                             |-- 傳送給後端 Spring Controller
+
+[ChatController.java]
+   |
+   |-- @MessageMapping("/sendMessage")
+   |        |
+   |        |-- 處理前端訊息，回傳 ChatMessage
+   |        V
+   |-- @SendTo("/topic/messages")
+            |
+            |-- 廣播給所有訂閱 /topic/messages 的前端
+
+[WebSocketConfig.java]
+   |
+   |-- registerStompEndpoints()
+   |       |
+   |       |-- registry.addEndpoint("/chat").withSockJS()
+   |       |      ↑↑↑ 就是 chat.html 中 SockJS('/chat') 對應的 endpoint
+   |
+   |-- configureMessageBroker()
+           |
+           |-- registry.enableSimpleBroker("/topic")    → 處理廣播給前端
+           |-- registry.setApplicationDestinationPrefixes("/app")
+                     ↑↑↑ 這個是前端發送訊息的起始路徑（如 /app/sendMessage）
+
+[ChatMessage.java]
+   |
+   |-- @Data @AllArgsConstructor 生成 getter/setter/constructor
+   |
+   |-- ChatMessage (id, sender, content)
+         ↑↑ 用來封裝訊息物件（JSON ↔ Java）
+
+[ chat.html 頁面 ]
+ ┌──────────────────────────────┐
+ │                              │
+ │  <input id="senderInput" /> ├───┐
+ │  <input id="messageInput" />├───┐
+ │  <button id="sendMessage" />├─┐ │
+ │  <div id="chat">            │ │ │
+ │     (顯示訊息內容)         │ │ │
+ └──────────────────────────────┘ │ │
+     │                             │ │
+     ▼                             ▼ ▼
+[ JS 連線邏輯 ]                   [ showMessage(message) ]
+ connect()                        - 顯示 message.sender + message.content
+  └─> SockJS('/chat')  <--→ WebSocket Endpoint
+  └─> Stomp.over(socket)
+  └─> stompClient.connect()
+          │
+          ▼
+   訂閱：/topic/messages
+   接收：onMessage → showMessage()
+
+[ 發送訊息 ]
+ sendMessage()
+  └─ 取得 senderInput & messageInput
+  └─ stompClient.send("/app/sendMessage", {}, messageJSON)
+
+╔════════════════════════════════════╗
+║              Spring Boot 後端結構             ║
+╚════════════════════════════════════╝
+
+[ WebSocketConfig.java ]
+ ┌──────────────────────────────────────────────┐
+ │ @EnableWebSocketMessageBroker                │
+ │ registerStompEndpoints("/chat")             │<───前端用 SockJS('/chat') 連線的端點
+ │ configureMessageBroker()                     │
+ │   └ enableSimpleBroker("/topic")             │───處理傳出去的訊息
+ │   └ setApplicationDestinationPrefixes("/app")│───處理送進來的訊息
+ └──────────────────────────────────────────────┘
+
+[ ChatController.java ]
+ ┌────────────────────────────────────────────────────┐
+ │ @MessageMapping("/sendMessage")                    │<───收到來自前端 /app/sendMessage
+ │ @SendTo("/topic/messages")                         │───將回應送到 /topic/messages
+ │ sendMessage(ChatMessage msg)                       │
+ │   └ return msg                                      │
+ │ @GetMapping("/chat")                               │<───用於載入 chat.html 頁面
+ └────────────────────────────────────────────────────┘
+
+[ ChatMessage.java ]
+ ┌────────────────────┐
+ │ @Data              │───使用 Lombok 產生 Getter/Setter 等
+ │ private Long id;   │
+ │ private String sender; │
+ │ private String content;│
+ └────────────────────┘
+
+完整流程（從輸入到畫面）：
+senderInput + messageInput
+        ↓
+點擊 sendButton
+        ↓
+JS → sendMessage() → /app/sendMessage
+        ↓
+Spring Controller → @MessageMapping
+        ↓
+返回 message → /topic/messages
+        ↓
+前端已訂閱 topic → showMessage()
+        ↓
+HTML 中 chat div 顯示訊息

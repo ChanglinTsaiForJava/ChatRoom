@@ -16,9 +16,10 @@ public class ChatController {
     public ChatMessage sendMessage(ChatMessage message){
         return message;
     }
-
+    //連線到聊天室第一個觸發這個
     @GetMapping("chat")
     public String chat(){
+        //找 chat.html
         return "chat";
     }
 }
